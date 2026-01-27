@@ -53,10 +53,12 @@ export async function POST(request: NextRequest) {
       ],
       mode: "payment",
       metadata: {
-        supabase_user_id: user.id, // This links the Stripe payment back to your User ID
+        supabase_user_id: user.id, 
       },
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/?payment_success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/`,
+      // We hardcode the production URL here to be 100% sure, 
+      // or you can set NEXT_PUBLIC_SITE_URL in your Vercel/Hosting provider settings.
+      success_url: `https://theplasticfork.com/?payment_success=true`,
+      cancel_url: `https://theplasticfork.com/`,
     });
 
     return NextResponse.json({ url: session.url });
