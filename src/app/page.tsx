@@ -342,6 +342,12 @@ function MealGenerator() {
           )}
         </div>
       </section>
+      {/* FOOTER ADDED HERE INSIDE THE MAIN DIV */}
+      <footer className="py-10 text-center opacity-30 hover:opacity-100 transition-opacity">
+        <a href="/privacy" className="text-[10px] uppercase tracking-[0.2em] font-bold hover:text-[#22c55e]">
+          Privacy Policy
+        </a>
+      </footer>
     </div>
   );
 }
