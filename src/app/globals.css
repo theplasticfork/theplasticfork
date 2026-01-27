@@ -1,26 +1,95 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #1a1a1a;
+  --foreground: #ededed;
+  --charcoal-dark: #0f0f0f;
+  --charcoal-medium: #2a2a2a;
+  --charcoal-light: #3a3a3a;
+  --vibrant-green: #22c55e;
+  --vibrant-orange: #f97316;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-charcoal-dark: var(--charcoal-dark);
+  --color-charcoal-medium: var(--charcoal-medium);
+  --color-charcoal-light: var(--charcoal-light);
+  --color-vibrant-green: var(--vibrant-green);
+  --color-vibrant-orange: var(--vibrant-orange);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+/* PRINT OPTIMIZATION LOGIC */
+@media print {
+  @page {
+    margin: 1cm;
+    size: auto;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Hide everything */
+  body * { 
+    visibility: hidden; 
+  }
+
+  /* Show only the plan */
+  .printable-plan, 
+  .printable-plan * { 
+    visibility: visible !important; 
+  }
+
+  .printable-plan { 
+    position: absolute; 
+    left: 0; 
+    top: 0; 
+    width: 100%;
+    background: white !important;
+    color: #000 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Target headers and text directly for black ink */
+  .printable-plan h3, 
+  .printable-plan p, 
+  .printable-plan span,
+  .printable-plan div {
+    color: #000 !important;
+  }
+
+  /* Fix the green bullet points and "PRO" badges without using Tailwind bracket classes */
+  .printable-plan .text-vibrant-green,
+  .printable-plan [class*="text-[#22c55e]"],
+  .printable-plan span[class*="font-bold"] {
+    color: #16a34a !important; 
+  }
+
+  /* Force the Dashboard box to have a light grey background for structure */
+  .printable-plan .bg-zinc-900,
+  .printable-plan [class*="bg-zinc-900"] {
+    background-color: #f4f4f5 !important; 
+    border: 1px solid #e4e4e7 !important;
+    -webkit-print-color-adjust: exact; /* Ensures backgrounds print */
+    print-color-adjust: exact;
+  }
+
+  .no-print, 
+  button, 
+  textarea, 
+  select, 
+  input { 
+    display: none !important; 
+  }
 }
