@@ -238,8 +238,19 @@ function MealGenerator() {
             You can&apos;t out-train a <span className="text-[#22c55e]"><br></br>bad fork.</span>
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto italic">Precision auditing. Blacklist the fluff. Get results. Keeping you in a deficit.</p>
+          
         </div>
       </section>
+
+      <section style={{ padding: '40px 20px', textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
+  <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem'}}><b>What the fork we do!</b></h2>
+  <p style={{ opacity: 0.8, lineHeight: '1.6' }}>
+    The Plastic Fork is an intelligent meal management tool designed to help you organize your culinary life. 
+    By signing in with Google, we securely sync your preferences and saved meal plans across devices. 
+    We prioritize your privacy and only use your basic profile information to provide a personalized, 
+    seamless experience.
+  </p>
+</section>
 
       <section className="relative py-8 px-4">
         <div className="max-w-2xl mx-auto space-y-12">
