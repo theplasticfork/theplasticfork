@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       payment_method_types: ["card"],
       line_items: [
         {
-          price: "price_1SsuTNRSNPEfkNwT7bYNb8jk", // Your $9 Price ID
+          price: process.env.STRIPE_PRICE_ID, // Your $9 Price ID
           quantity: 1,
         },
       ],
