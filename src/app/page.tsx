@@ -18,6 +18,14 @@ function MealGenerator() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+
+  // How many free audits a signed-in user gets before the paywall.
+  const FREE_AUDIT_LIMIT = 2;
+
+  // A signed-in, non-Pro user who has used up their free audits.
+  const needsUpgrade =
+    !!user && !profile?.is_pro && audits.length >= FREE_AUDIT_LIMIT;
 
   const fetchData = async (userId: string) => {
     const { data: auditData } = await supabase
@@ -102,6 +110,32 @@ function MealGenerator() {
     setGeneratedPlan(null);
   };
 
+  // Sends a signed-in user to Stripe for the one-time $9 lifetime unlock.
+  const handleUpgrade = async () => {
+    setErrorMessage(null);
+    setIsUpgrading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setErrorMessage(data.error || "Payment system offline. Try again shortly.");
+    } catch {
+      setErrorMessage("Payment system offline. Try again shortly.");
+    } finally {
+      setIsUpgrading(false);
+    }
+  };
+
   const handleForkIt = async () => {
     setErrorMessage(null);
 
@@ -119,45 +153,14 @@ function MealGenerator() {
       }
     }
 
-    // --- LOGIC GATE 2: SIGNED IN BUT NOT PRO ($9 PAYWALL) ---
-    if (user && (!profile || !profile.is_pro)) {
-      if (audits.length >= 1) {
-        setIsAnalyzing(true);
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const token = session?.access_token;
-
-          const res = await fetch("/api/checkout", { 
-            method: "POST", 
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          const data = await res.json();
-          if (data.url) {
-            window.location.href = data.url; 
-            return;
-          } else {
-            setErrorMessage(data.error || "Payment system offline.");
-          }
-        } catch (err) {
-          setErrorMessage("Payment system offline.");
-        } finally {
-          setIsAnalyzing(false);
-        }
-        return;
-      }
+    // --- LOGIC GATE 2: SIGNED IN, FREE AUDITS USED UP ($9 PAYWALL) ---
+    // We don't jump straight to Stripe here. We show a clear upgrade card
+    // (rendered below) that explains the offer before charging anyone.
+    if (needsUpgrade) {
+      return;
     }
 
-    // --- LOGIC GATE 3: PRO USER LIMITS (2 in 24hrs) ---
-    if (user && profile?.is_pro) {
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const recentAudits = audits.filter(a => new Date(a.created_at) > twentyFourHoursAgo);
-        
-        if (recentAudits.length >= 2) {
-            setErrorMessage("PRO LIMIT REACHED: 2 audits per 24 hours. Stick to the plan.");
-            return;
-        }
-    }
+    // --- PRO USERS: unlimited. No cap. That's what "lifetime access" means. ---
 
     setIsAnalyzing(true);
     try {
@@ -169,7 +172,8 @@ function MealGenerator() {
           userWeight: weight, 
           goalWeight, 
           bodyFat: bodyFat || "20", 
-          activityLevel 
+          activityLevel,
+          isPro: !!profile?.is_pro
         }),
       });
 
@@ -236,9 +240,6 @@ function MealGenerator() {
 
   const getButtonText = () => {
     if (isAnalyzing) return "Forking it...";
-    if (user && (!profile || !profile.is_pro) && audits.length >= 1) {
-        return "UNLIMITED LIFE TIME ACCESS - $9";
-    }
     return "Fork it!";
   };
 
@@ -306,6 +307,41 @@ function MealGenerator() {
                   </div>
                   <button onClick={() => { setGeneratedPlan(null); setErrorMessage(null); }} className="mt-8 text-sm text-zinc-400 hover:text-white transition-colors"><span aria-hidden="true">←</span> Start New Audit</button>
                 </div>
+              </div>
+            ) : needsUpgrade ? (
+              <div className="space-y-6 no-print text-center">
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold text-white uppercase">You&apos;ve used your free audits</h2>
+                  <p className="text-sm text-zinc-400">Unlock unlimited audits for life. One payment, no subscription.</p>
+                </div>
+
+                <div className="bg-[#0a0a0a] rounded-lg p-8 border border-zinc-800">
+                  <div className="flex items-baseline justify-center gap-1 mb-6">
+                    <span className="text-5xl font-black text-[#22c55e]">$9</span>
+                    <span className="text-sm text-zinc-400 font-bold uppercase tracking-widest">/ lifetime</span>
+                  </div>
+                  <ul className="text-sm text-zinc-300 space-y-2 mb-8 text-left max-w-xs mx-auto">
+                    <li className="flex gap-2"><span className="text-[#22c55e]" aria-hidden="true">✓</span> Unlimited meal plan audits, forever</li>
+                    <li className="flex gap-2"><span className="text-[#22c55e]" aria-hidden="true">✓</span> All your plans saved &amp; synced</li>
+                    <li className="flex gap-2"><span className="text-[#22c55e]" aria-hidden="true">✓</span> One-time payment. No subscription.</li>
+                  </ul>
+
+                  {errorMessage && (
+                    <div role="alert" className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+                      {errorMessage}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleUpgrade}
+                    disabled={isUpgrading}
+                    aria-busy={isUpgrading}
+                    className="w-full py-4 bg-[#22c55e] text-black font-black uppercase tracking-widest rounded-lg disabled:opacity-30 shadow-xl transition-all active:scale-95"
+                  >
+                    {isUpgrading ? "Redirecting to checkout..." : "Unlock Lifetime Access — $9"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Secure checkout via Stripe</p>
               </div>
             ) : (
               <div className="space-y-6 no-print">
