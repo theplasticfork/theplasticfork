@@ -68,10 +68,14 @@ export async function POST(request: NextRequest) {
     const weightToLose = weightNum - goalNum;
     const weeksToGoal = weightToLose > 0 ? Math.ceil(weightToLose / 1) : 0;
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: "API key not configured" }, { status: 500 });
     }
+
+    // Model + timeout config
+    const MODEL = "openai/gpt-oss-120b";
+    const TIMEOUT_MS = 30000;
 
     const prompt = `You are 'The Plastic Fork'—a blunt nutrition auditor. 
 
@@ -90,25 +94,92 @@ REQUIRED OUTPUT:
 
 TONE: Clinical, aggressive, no-nonsense.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        }),
+    // Calls Groq's streaming chat endpoint (OpenAI-compatible). Retries once on
+    // a failed/timed-out connection so a single slow moment doesn't kill it.
+    const callGroq = async (): Promise<Response> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        return await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            stream: true,
+            // This is a reasoning model; "low" keeps it from streaming its
+            // internal thinking and gets us straight to the answer.
+            reasoning_effort: "low",
+            messages: [{ role: "user", content: prompt }],
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
       }
-    );
+    };
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error?.message || "Failed to fetch from Google AI");
+    let upstream: Response;
+    try {
+      upstream = await callGroq();
+      if (!upstream.ok) throw new Error(`Upstream status ${upstream.status}`);
+    } catch {
+      // One retry
+      upstream = await callGroq();
     }
 
-    const text = data.candidates[0].content.parts[0].text;
-    return NextResponse.json({ plan: text });
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text().catch(() => "");
+      throw new Error(errText || "Failed to fetch from Groq");
+    }
+
+    // Transform Groq's SSE stream into a plain text stream of the model output.
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const reader = upstream.body!.getReader();
+        let buffer = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE events are separated by newlines; each data line is JSON.
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith("data:")) continue;
+              const json = trimmed.slice(5).trim();
+              if (!json || json === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(json);
+                const text = parsed?.choices?.[0]?.delta?.content ?? "";
+                if (text) controller.enqueue(encoder.encode(text));
+              } catch {
+                // Ignore partial/non-JSON keep-alive lines
+              }
+            }
+          }
+        } catch (err) {
+          controller.error(err);
+          return;
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    });
 
   } catch (error: any) {
     console.error("Error generating plan:", error);
