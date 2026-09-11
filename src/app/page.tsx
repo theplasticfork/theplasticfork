@@ -17,6 +17,7 @@ function MealGenerator() {
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchData = async (userId: string) => {
     const { data: auditData } = await supabase
@@ -102,15 +103,17 @@ function MealGenerator() {
   };
 
   const handleForkIt = async () => {
+    setErrorMessage(null);
+
     if (!weight || !goalWeight) {
-        alert("Weight and Goal Weight are required. Don't waste my time.");
+        setErrorMessage("Weight and Goal Weight are required. Don't waste my time.");
         return;
     }
 
     // --- LOGIC GATE 1: GUEST USER ---
     if (!user) {
       if (localStorage.getItem("plastic-fork-usage-count") === "1") {
-        alert("GUEST LIMIT REACHED. Sign in to continue your audits.");
+        setErrorMessage("GUEST LIMIT REACHED. Sign in to continue your audits.");
         handleLogin();
         return;
       }
@@ -134,10 +137,10 @@ function MealGenerator() {
             window.location.href = data.url; 
             return;
           } else {
-            alert(data.error || "Payment system offline.");
+            setErrorMessage(data.error || "Payment system offline.");
           }
         } catch (err) {
-          alert("Payment system offline.");
+          setErrorMessage("Payment system offline.");
         } finally {
           setIsAnalyzing(false);
         }
@@ -151,7 +154,7 @@ function MealGenerator() {
         const recentAudits = audits.filter(a => new Date(a.created_at) > twentyFourHoursAgo);
         
         if (recentAudits.length >= 2) {
-            alert("PRO LIMIT REACHED: 2 audits per 24 hours. Stick to the plan.");
+            setErrorMessage("PRO LIMIT REACHED: 2 audits per 24 hours. Stick to the plan.");
             return;
         }
     }
@@ -170,8 +173,37 @@ function MealGenerator() {
         }),
       });
 
-      const data = await response.json();
-      setGeneratedPlan(data.plan);
+      // Non-streaming failure (e.g. rate limit) still returns JSON
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setErrorMessage(data.error || "Generation failed. Try again.");
+        return;
+      }
+
+      // Stream the plan in as it generates so text appears immediately.
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullPlan = "";
+
+      if (reader) {
+        setGeneratedPlan(""); // show the report view right away
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          fullPlan += decoder.decode(value, { stream: true });
+          setGeneratedPlan(fullPlan);
+        }
+      } else {
+        // Fallback if streaming isn't available
+        fullPlan = await response.text();
+        setGeneratedPlan(fullPlan);
+      }
+
+      if (!fullPlan.trim()) {
+        setErrorMessage("Generation failed. Try again.");
+        setGeneratedPlan(null);
+        return;
+      }
       
       if (user) {
         await supabase.from('audits').insert([{
@@ -182,19 +214,19 @@ function MealGenerator() {
           body_fat: bodyFat || "20", 
           activity_level: activityLevel, 
           ingredients: fridgeInput || "None", 
-          generated_plan: data.plan
+          generated_plan: fullPlan
         }]);
         fetchData(user.id); 
       } else {
         // Save guest data for later sync
         localStorage.setItem("plastic-fork-usage-count", "1");
-        localStorage.setItem("last-guest-plan-content", data.plan);
+        localStorage.setItem("last-guest-plan-content", fullPlan);
         localStorage.setItem("last-guest-plan-meta", JSON.stringify({
           weight, goalWeight, bodyFat: bodyFat || "20", activityLevel, ingredients: fridgeInput || "None"
         }));
       }
     } catch (e) {
-      alert("Generation failed.");
+      setErrorMessage("Generation failed. Check your connection and try again.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -212,6 +244,7 @@ function MealGenerator() {
 
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-[#ededed]">
+      <a href="#main-content" className="skip-link no-print">Skip to main content</a>
       {/* ... Navigation and Hero Sections ... */}
       <nav className="border-b border-zinc-800 bg-[#0f0f0f]/80 backdrop-blur-md sticky top-0 z-50 no-print">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -222,7 +255,7 @@ function MealGenerator() {
           <div>
             {user ? (
               <div className="flex items-center gap-4">
-                <span className="hidden sm:inline text-xs font-mono text-zinc-500">{user.email}</span>
+                <span className="hidden sm:inline text-xs font-mono text-zinc-400">{user.email}</span>
                 <button onClick={handleLogout} className="text-xs font-bold uppercase tracking-widest text-zinc-400 hover:text-white transition-colors">Sign Out</button>
               </div>
             ) : (
@@ -252,7 +285,7 @@ function MealGenerator() {
   </p>
 </section>
 
-      <section className="relative py-8 px-4">
+      <section id="main-content" className="relative py-8 px-4">
         <div className="max-w-2xl mx-auto space-y-12">
           <div className="bg-[#161616] rounded-2xl p-8 border border-zinc-800 shadow-2xl">
             {generatedPlan ? (
@@ -261,8 +294,8 @@ function MealGenerator() {
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="text-2xl font-bold text-white tracking-tight italic underline uppercase">Audit Report</h3>
                     <div className="text-right">
-                      <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Forbidden Items</p>
-                      <p className="text-xs text-red-500 font-mono">{fridgeInput || "None Reported"}</p>
+                      <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Forbidden Items</p>
+                      <p className="text-xs text-red-400 font-mono">{fridgeInput || "None Reported"}</p>
                     </div>
                   </div>
                   
@@ -271,7 +304,7 @@ function MealGenerator() {
                       <p key={index} className="text-sm leading-relaxed">{line}</p>
                     ))}
                   </div>
-                  <button onClick={() => setGeneratedPlan(null)} className="mt-8 text-sm text-zinc-500 hover:text-white transition-colors">← Start New Audit</button>
+                  <button onClick={() => { setGeneratedPlan(null); setErrorMessage(null); }} className="mt-8 text-sm text-zinc-400 hover:text-white transition-colors"><span aria-hidden="true">←</span> Start New Audit</button>
                 </div>
               </div>
             ) : (
@@ -283,46 +316,64 @@ function MealGenerator() {
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="relative">
-                    <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Current Weight" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
-                    <span className="absolute right-4 top-3.5 text-zinc-600 font-bold text-[10px]">LBS</span>
+                    <label htmlFor="weight" className="sr-only">Current weight in pounds</label>
+                    <input id="weight" type="number" inputMode="numeric" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Current Weight" aria-describedby="weight-unit" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
+                    <span id="weight-unit" className="absolute right-4 top-3.5 text-zinc-400 font-bold text-[10px]">LBS</span>
                   </div>
                   <div className="relative">
-                    <input type="number" value={goalWeight} onChange={(e) => setGoalWeight(e.target.value)} placeholder="Goal Weight" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
-                    <span className="absolute right-4 top-3.5 text-zinc-600 font-bold text-[10px]">GOAL</span>
+                    <label htmlFor="goal-weight" className="sr-only">Goal weight in pounds</label>
+                    <input id="goal-weight" type="number" inputMode="numeric" value={goalWeight} onChange={(e) => setGoalWeight(e.target.value)} placeholder="Goal Weight" aria-describedby="goal-unit" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
+                    <span id="goal-unit" className="absolute right-4 top-3.5 text-zinc-400 font-bold text-[10px]">GOAL</span>
                   </div>
                   <div className="relative">
-                    <input type="number" value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} placeholder="Body Fat %" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
-                    <span className="absolute right-4 top-3.5 text-zinc-600 font-bold text-[10px]">% FAT</span>
+                    <label htmlFor="body-fat" className="sr-only">Body fat percentage</label>
+                    <input id="body-fat" type="number" inputMode="decimal" value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} placeholder="Body Fat %" aria-describedby="fat-unit" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
+                    <span id="fat-unit" className="absolute right-4 top-3.5 text-zinc-400 font-bold text-[10px]">% FAT</span>
                   </div>
-                  <select value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)} className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none appearance-none cursor-pointer">
-                    <option value="1.2">Sedentary (Minimal Movement)</option>
-                    <option value="1.375">Light (1-2 days/week)</option>
-                    <option value="1.55">Moderate (3-5 days/week)</option>
-                    <option value="1.725">Heavy (Daily Training)</option>
-                    <option value="1.9">Elite (Twice Daily)</option>
-                  </select>
+                  <div>
+                    <label htmlFor="activity-level" className="sr-only">Activity level</label>
+                    <select id="activity-level" value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)} className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none appearance-none cursor-pointer">
+                      <option value="1.2">Sedentary (Minimal Movement)</option>
+                      <option value="1.375">Light (1-2 days/week)</option>
+                      <option value="1.55">Moderate (3-5 days/week)</option>
+                      <option value="1.725">Heavy (Daily Training)</option>
+                      <option value="1.9">Elite (Twice Daily)</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">The Blacklist</label>
+                  <label htmlFor="blacklist" className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">The Blacklist</label>
                   <textarea 
+                    id="blacklist"
                     value={fridgeInput} 
                     onChange={(e) => setFridgeInput(e.target.value)} 
                     placeholder="List foods you refuse to eat (e.g. No eggplant, no dairy, no cilantro)..." 
                     className="w-full h-32 px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none resize-none focus:border-red-900/50 transition-colors" 
                   />
                 </div>
+
+                {errorMessage && (
+                  <div role="alert" className="rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+                    {errorMessage}
+                  </div>
+                )}
               
-                <button onClick={handleForkIt} disabled={isAnalyzing} className="w-full py-4 bg-[#22c55e] text-black font-black uppercase tracking-widest rounded-lg disabled:opacity-30 shadow-xl transition-all active:scale-95">
+                <button onClick={handleForkIt} disabled={isAnalyzing} aria-busy={isAnalyzing} className="w-full py-4 bg-[#22c55e] text-black font-black uppercase tracking-widest rounded-lg disabled:opacity-30 shadow-xl transition-all active:scale-95">
                   {getButtonText()}
                 </button>
+
+                {/* Screen-reader announcement for the loading state */}
+                <p aria-live="polite" className="sr-only">
+                  {isAnalyzing ? "Generating your audit report, please wait." : ""}
+                </p>
               </div>
             )}
           </div>
 
           {user && audits.length > 0 && !generatedPlan && (
             <div className="space-y-4 no-print animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Audit History</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Audit History</h3>
               <div className="grid grid-cols-1 gap-3">
                 {audits.map((audit) => (
                   <button 
@@ -339,12 +390,12 @@ function MealGenerator() {
                     className="flex items-center justify-between p-5 bg-[#161616] border border-zinc-800 rounded-xl hover:border-[#22c55e]/50 transition-all group"
                   >
                     <div className="text-left">
-                      <p className="text-[10px] font-mono text-zinc-500 uppercase mb-1">{new Date(audit.created_at).toLocaleDateString()}</p>
-                      <p className="text-sm font-bold text-white">{audit.weight} LBS → <span className="text-[#22c55e]">{audit.goal_weight} LBS</span></p>
-                      <p className="text-[9px] text-zinc-600 uppercase mt-1 truncate max-w-[150px]">Excluded: {audit.ingredients}</p>
+                      <p className="text-[10px] font-mono text-zinc-400 uppercase mb-1">{new Date(audit.created_at).toLocaleDateString()}</p>
+                      <p className="text-sm font-bold text-white">{audit.weight} LBS <span aria-hidden="true">→</span> <span className="text-[#22c55e]">{audit.goal_weight} LBS</span></p>
+                      <p className="text-[9px] text-zinc-500 uppercase mt-1 truncate max-w-[150px]">Excluded: {audit.ingredients}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] font-black uppercase tracking-tighter text-zinc-600 group-hover:text-[#22c55e]">Open Report →</span>
+                      <span className="text-[10px] font-black uppercase tracking-tighter text-zinc-400 group-hover:text-[#22c55e]">Open Report <span aria-hidden="true">→</span></span>
                     </div>
                   </button>
                 ))}
@@ -354,8 +405,8 @@ function MealGenerator() {
         </div>
       </section>
       {/* FOOTER ADDED HERE INSIDE THE MAIN DIV */}
-      <footer className="py-10 text-center opacity-30 hover:opacity-100 transition-opacity">
-        <a href="/privacy" className="text-[10px] uppercase tracking-[0.2em] font-bold hover:text-[#22c55e]">
+      <footer className="py-10 text-center">
+        <a href="/privacy" className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400 hover:text-[#22c55e] transition-colors">
           Privacy Policy
         </a>
       </footer>
