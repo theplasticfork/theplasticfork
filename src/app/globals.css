@@ -1,30 +1,58 @@
 @import "tailwindcss";
 
 :root {
-  --background: #1a1a1a;
-  --foreground: #ededed;
-  --charcoal-dark: #0f0f0f;
-  --charcoal-medium: #2a2a2a;
-  --charcoal-light: #3a3a3a;
-  --vibrant-green: #22c55e;
-  --vibrant-orange: #f97316;
+  /* Brand palette (The Plastic Fork — Brand Guidelines v1.0) */
+  --carbon: #0B0B0C;         /* primary background */
+  --carbon-raised: #17181A;  /* raised surfaces / cards */
+  --carbon-line: #26282B;    /* borders / dividers */
+  --chalk: #F4F4F1;          /* primary text */
+  --steel: #8D9199;          /* secondary text */
+  --steel-dim: #5B5F66;      /* tertiary text / hints */
+  --fork-green: #46D17A;     /* primary accent */
+  --fork-green-deep: #2E9F5B;
+  --blacklist-red: #EF5B50;  /* restrictions / destructive / errors */
+  --pr-gold: #E8B84B;        /* rare: milestones / PRs only */
+
+  --background: var(--carbon);
+  --foreground: var(--chalk);
+  /* Kept so existing --vibrant-green references resolve to brand green */
+  --vibrant-green: var(--fork-green);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-charcoal-dark: var(--charcoal-dark);
-  --color-charcoal-medium: var(--charcoal-medium);
-  --color-charcoal-light: var(--charcoal-light);
-  --color-vibrant-green: var(--vibrant-green);
-  --color-vibrant-orange: var(--vibrant-orange);
+  --color-carbon: var(--carbon);
+  --color-carbon-raised: var(--carbon-raised);
+  --color-carbon-line: var(--carbon-line);
+  --color-chalk: var(--chalk);
+  --color-steel: var(--steel);
+  --color-steel-dim: var(--steel-dim);
+  --color-fork-green: var(--fork-green);
+  --color-blacklist-red: var(--blacklist-red);
+  --color-pr-gold: var(--pr-gold);
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-archivo-black), "Arial Black", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "Courier New", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+::selection {
+  background: var(--fork-green);
+  color: var(--carbon);
+}
+
+/* Brand type helpers */
+.font-display {
+  font-family: var(--font-archivo-black), "Arial Black", sans-serif;
+}
+.font-mono-data {
+  font-family: var(--font-jetbrains-mono), "Courier New", monospace;
 }
 
 /* ACCESSIBILITY: visible focus indicator for keyboard users.
