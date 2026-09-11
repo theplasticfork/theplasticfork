@@ -31,10 +31,11 @@ export async function POST(request: NextRequest) {
             request_count: 1, 
             last_request: new Date().toISOString() 
           }).eq('ip_address', ip);
-        } else if (limitData.request_count >= 3) {
-          // They've hit the 3-plan limit in 24 hours
+        } else if (limitData.request_count >= 10) {
+          // Abuse guard only. Normal users are gated by the 2-free-then-pay
+          // flow on the client; this just stops runaway automated abuse.
           return NextResponse.json({ 
-            error: "IP LIMIT REACHED. Sign in for more audits or wait 24 hours." 
+            error: "Too many requests from this network. Try again later." 
           }, { status: 429 });
         } else {
           // Increment their usage
