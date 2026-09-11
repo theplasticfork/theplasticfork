@@ -8,21 +8,21 @@ export const metadata: Metadata = {
 
 export default function Privacy() {
   return (
-    <main className="min-h-screen bg-[#0f0f0f] text-[#ededed] px-6 py-16">
+    <main className="min-h-screen bg-carbon text-chalk px-6 py-16">
       <div className="max-w-2xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Privacy Policy</h1>
-        <p className="text-zinc-300 leading-relaxed">
+        <h1 className="font-display text-3xl tracking-tight uppercase">Privacy Policy</h1>
+        <p className="text-steel leading-relaxed">
           The Plastic Fork does not sell your data. We only use your email to
           manage your meal plan audits and to sync your saved plans across
           devices.
         </p>
-        <p className="text-zinc-300 leading-relaxed">
+        <p className="text-steel leading-relaxed">
           When you sign in with Google, we access only your basic profile
           information (name and email) to provide a personalized experience.
         </p>
         <Link
           href="/"
-          className="inline-block text-sm font-bold uppercase tracking-widest text-[#22c55e] hover:underline"
+          className="inline-block text-sm font-bold uppercase tracking-widest text-fork-green hover:underline"
         >
           <span aria-hidden="true">←</span> Back to home
         </Link>

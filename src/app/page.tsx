@@ -19,6 +19,7 @@ function MealGenerator() {
   const [generatedPlan, setGeneratedPlan] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUpgrading, setIsUpgrading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // How many free audits a signed-in user gets before the paywall.
   const FREE_AUDIT_LIMIT = 2;
@@ -236,7 +237,109 @@ function MealGenerator() {
     }
   }
 
-  const formatPlan = (plan: string) => plan.split('\n').filter(line => line.trim().length > 0);
+  // Copy the current plan to the clipboard (stripped of markdown noise).
+  const handleCopyPlan = async () => {
+    if (!generatedPlan) return;
+    try {
+      await navigator.clipboard.writeText(cleanPlanText(generatedPlan));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setErrorMessage("Couldn't copy. Try selecting the text manually.");
+    }
+  };
+
+  // Download the plan as a .txt file.
+  const handleDownloadPlan = () => {
+    if (!generatedPlan) return;
+    const blob = new Blob([cleanPlanText(generatedPlan)], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plastic-fork-audit-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Strip markdown symbols for clean plain-text copy/download.
+  const cleanPlanText = (plan: string) =>
+    plan
+      .replace(/\*\*/g, "")
+      .replace(/^#+\s*/gm, "")
+      .replace(/^\s*[-*]\s+/gm, "• ")
+      .replace(/^\s*\|.*\|\s*$/gm, (m) => m.replace(/\|/g, " ").trim())
+      .trim();
+
+  // Structured rendering of the AI plan. The model returns markdown-ish text;
+  // we turn headers, bullets, and table rows into branded components instead
+  // of dumping a raw text blob.
+  const renderPlan = (plan: string) => {
+    const lines = plan.split("\n").filter((l) => l.trim().length > 0);
+    return (
+      <div className="space-y-2">
+        {lines.map((raw, i) => {
+          const line = raw.trim();
+
+          // Section headers: markdown # or **BOLD-ONLY** lines
+          const isMdHeader = /^#+\s+/.test(line);
+          const isBoldHeader = /^\*\*[^*]+\*\*:?\s*$/.test(line);
+          if (isMdHeader || isBoldHeader) {
+            const text = line.replace(/^#+\s+/, "").replace(/\*\*/g, "").replace(/:$/, "");
+            return (
+              <h4 key={i} className="font-display text-sm uppercase tracking-wide text-fork-green pt-4 first:pt-0">
+                {text}
+              </h4>
+            );
+          }
+
+          // Table rows (markdown pipes) -> mono line, skip separator rows
+          if (line.startsWith("|")) {
+            if (/^\|[\s:|-]+\|?$/.test(line)) return null; // separator row
+            const cells = line.split("|").map((c) => c.trim()).filter(Boolean);
+            return (
+              <p key={i} className="font-mono-data text-xs text-chalk flex flex-wrap gap-x-3 border-b border-carbon-line/50 py-1">
+                {cells.map((c, ci) => (
+                  <span key={ci} className={ci === 0 ? "text-steel min-w-[70px]" : ""}>{stripInline(c)}</span>
+                ))}
+              </p>
+            );
+          }
+
+          // Bullet points
+          if (/^[-*]\s+/.test(line)) {
+            return (
+              <p key={i} className="text-sm text-chalk leading-relaxed flex gap-2">
+                <span className="text-fork-green" aria-hidden="true">•</span>
+                <span>{stripInline(line.replace(/^[-*]\s+/, ""))}</span>
+              </p>
+            );
+          }
+
+          // Horizontal rule
+          if (/^---+$/.test(line)) {
+            return <hr key={i} className="border-carbon-line" />;
+          }
+
+          // Plain paragraph
+          return (
+            <p key={i} className="text-sm text-steel leading-relaxed">{stripInline(line)}</p>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Turn inline **bold** into a styled span; leave the rest as text.
+  const stripInline = (text: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((p, i) =>
+      /^\*\*[^*]+\*\*$/.test(p)
+        ? <strong key={i} className="text-chalk font-bold">{p.replace(/\*\*/g, "")}</strong>
+        : <span key={i}>{p}</span>
+    );
+  };
 
   const getButtonText = () => {
     if (isAnalyzing) return "Forking it...";
@@ -244,90 +347,99 @@ function MealGenerator() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-[#ededed]">
+    <div className="min-h-screen bg-carbon text-chalk">
       <a href="#main-content" className="skip-link no-print">Skip to main content</a>
       {/* ... Navigation and Hero Sections ... */}
-      <nav className="border-b border-zinc-800 bg-[#0f0f0f]/80 backdrop-blur-md sticky top-0 z-50 no-print">
+      <nav className="border-b border-carbon-line bg-carbon/90 backdrop-blur-md sticky top-0 z-50 no-print">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-black tracking-tighter text-xl text-white uppercase">The Plastic Fork</span>
-            {profile?.is_pro && <span className="text-[10px] bg-[#22c55e] text-black px-2 py-0.5 rounded-full font-bold">PRO</span>}
+          <div className="flex items-center gap-3">
+            <span className="font-display text-lg tracking-tight text-chalk uppercase">The Plastic <span className="text-fork-green">Fork</span></span>
+            {profile?.is_pro && <span className="font-mono-data text-[10px] bg-fork-green text-carbon px-2 py-0.5 font-bold">PRO</span>}
           </div>
           <div>
             {user ? (
               <div className="flex items-center gap-4">
-                <span className="hidden sm:inline text-xs font-mono text-zinc-400">{user.email}</span>
-                <button onClick={handleLogout} className="text-xs font-bold uppercase tracking-widest text-zinc-400 hover:text-white transition-colors">Sign Out</button>
+                <span className="hidden sm:inline text-xs font-mono-data text-steel">{user.email}</span>
+                <button onClick={handleLogout} className="text-xs font-bold uppercase tracking-widest text-steel hover:text-chalk transition-colors">Sign Out</button>
               </div>
             ) : (
-              <button onClick={handleLogin} className="text-xs font-bold uppercase tracking-widest bg-white text-black px-4 py-2 rounded-full hover:bg-zinc-200 transition-colors">Sign In</button>
+              <button onClick={handleLogin} className="text-xs font-bold uppercase tracking-widest bg-chalk text-carbon px-4 py-2 hover:bg-white transition-colors">Sign In</button>
             )}
           </div>
         </div>
       </nav>
 
-      <section className="relative flex items-center justify-center px-4 py-16 text-center no-print">
+      <section className="relative flex items-center justify-center px-4 py-20 text-center no-print border-b border-carbon-line">
         <div className="max-w-4xl mx-auto space-y-6">
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tight">
-            You can&apos;t out-train a <span className="text-[#22c55e]"><br></br>bad fork.</span>
+          <span className="font-mono-data text-xs uppercase tracking-[0.2em] text-fork-green">Precision, not positivity</span>
+          <h1 className="font-display text-5xl sm:text-7xl leading-[0.95] tracking-tight uppercase">
+            You can&apos;t out-train<br />a <span className="text-fork-green">bad fork.</span>
           </h1>
-          <p className="text-lg text-gray-400 max-w-2xl mx-auto italic">Precision auditing. Blacklist the fluff. Get results. Keeping you in a deficit.</p>
-          
+          <p className="text-lg text-steel max-w-2xl mx-auto">Precision auditing. Blacklist the fluff. Get results. Keeping you in a deficit.</p>
         </div>
       </section>
 
-      <section style={{ padding: '40px 20px', textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
-  <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem'}}><b>What the fork we do!</b></h2>
-  <p style={{ opacity: 0.8, lineHeight: '1.6' }}>
-    The Plastic Fork is an intelligent meal management tool designed to help you organize your culinary life. 
-    By signing in with Google, we securely sync your preferences and saved meal plans across devices. 
-    We prioritize your privacy and only use your basic profile information to provide a personalized, 
-    seamless experience.
-  </p>
-</section>
+      <section className="max-w-2xl mx-auto px-6 py-16 text-center border-b border-carbon-line no-print">
+        <h2 className="font-display text-2xl uppercase mb-4">What the fork we do</h2>
+        <p className="text-steel leading-relaxed">
+          The Plastic Fork is an intelligent meal management tool designed to help you organize your culinary life.
+          By signing in with Google, we securely sync your preferences and saved meal plans across devices.
+          We prioritize your privacy and only use your basic profile information to provide a personalized,
+          seamless experience.
+        </p>
+      </section>
 
-      <section id="main-content" className="relative py-8 px-4">
+      <section id="main-content" className="relative py-12 px-4">
         <div className="max-w-2xl mx-auto space-y-12">
-          <div className="bg-[#161616] rounded-2xl p-8 border border-zinc-800 shadow-2xl">
+          <div className="bg-carbon-raised p-8 border border-carbon-line shadow-2xl">
             {generatedPlan ? (
               <div className="space-y-6">
-                <div className="bg-[#0a0a0a] rounded-lg p-6 border border-zinc-800 printable-plan shadow-inner">
+                <div className="bg-carbon p-6 border border-carbon-line printable-plan">
                   <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-2xl font-bold text-white tracking-tight italic underline uppercase">Audit Report</h3>
+                    <h3 className="font-display text-2xl text-chalk uppercase">Audit Report</h3>
                     <div className="text-right">
-                      <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Forbidden Items</p>
-                      <p className="text-xs text-red-400 font-mono">{fridgeInput || "None Reported"}</p>
+                      <p className="text-[10px] text-steel uppercase font-bold tracking-widest">Forbidden Items</p>
+                      <p className="text-xs text-blacklist-red font-mono-data">{fridgeInput || "None Reported"}</p>
                     </div>
                   </div>
-                  
-                  <div className="space-y-3 text-gray-300 border-t border-zinc-800 pt-4">
-                    {formatPlan(generatedPlan).map((line, index) => (
-                      <p key={index} className="text-sm leading-relaxed">{line}</p>
-                    ))}
+
+                  <div className="border-t border-carbon-line pt-4">
+                    {renderPlan(generatedPlan)}
                   </div>
-                  <button onClick={() => { setGeneratedPlan(null); setErrorMessage(null); }} className="mt-8 text-sm text-zinc-400 hover:text-white transition-colors"><span aria-hidden="true">←</span> Start New Audit</button>
+
+                  <div className="mt-8 flex flex-wrap items-center gap-4 no-print">
+                    <button onClick={() => { setGeneratedPlan(null); setErrorMessage(null); }} className="text-sm text-steel hover:text-chalk transition-colors"><span aria-hidden="true">←</span> Start New Audit</button>
+                    <div className="flex gap-3 ml-auto">
+                      <button onClick={handleCopyPlan} className="text-xs font-bold uppercase tracking-widest border border-carbon-line text-steel hover:text-chalk hover:border-steel px-4 py-2 transition-colors">
+                        {copied ? "Copied ✓" : "Copy"}
+                      </button>
+                      <button onClick={handleDownloadPlan} className="text-xs font-bold uppercase tracking-widest border border-carbon-line text-steel hover:text-chalk hover:border-steel px-4 py-2 transition-colors">
+                        Download
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : needsUpgrade ? (
               <div className="space-y-6 no-print text-center">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-bold text-white uppercase">You&apos;ve used your free audits</h2>
-                  <p className="text-sm text-zinc-400">Unlock unlimited audits for life. One payment, no subscription.</p>
+                  <h2 className="font-display text-2xl text-chalk uppercase">You&apos;ve used your free audits</h2>
+                  <p className="text-sm text-steel">Unlock unlimited audits for life. One payment, no subscription.</p>
                 </div>
 
-                <div className="bg-[#0a0a0a] rounded-lg p-8 border border-zinc-800">
+                <div className="bg-carbon p-8 border border-carbon-line">
                   <div className="flex items-baseline justify-center gap-1 mb-6">
-                    <span className="text-5xl font-black text-[#22c55e]">$9</span>
-                    <span className="text-sm text-zinc-400 font-bold uppercase tracking-widest">/ lifetime</span>
+                    <span className="font-mono-data text-5xl font-bold text-fork-green">$9</span>
+                    <span className="text-sm text-steel font-bold uppercase tracking-widest">/ lifetime</span>
                   </div>
-                  <ul className="text-sm text-zinc-300 space-y-2 mb-8 text-left max-w-xs mx-auto">
-                    <li className="flex gap-2"><span className="text-[#22c55e]" aria-hidden="true">✓</span> Unlimited meal plan audits, forever</li>
-                    <li className="flex gap-2"><span className="text-[#22c55e]" aria-hidden="true">✓</span> All your plans saved &amp; synced</li>
-                    <li className="flex gap-2"><span className="text-[#22c55e]" aria-hidden="true">✓</span> One-time payment. No subscription.</li>
+                  <ul className="text-sm text-chalk space-y-2 mb-8 text-left max-w-xs mx-auto">
+                    <li className="flex gap-2"><span className="text-fork-green" aria-hidden="true">✓</span> Unlimited meal plan audits, forever</li>
+                    <li className="flex gap-2"><span className="text-fork-green" aria-hidden="true">✓</span> All your plans saved &amp; synced</li>
+                    <li className="flex gap-2"><span className="text-fork-green" aria-hidden="true">✓</span> One-time payment. No subscription.</li>
                   </ul>
 
                   {errorMessage && (
-                    <div role="alert" className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+                    <div role="alert" className="mb-4 border border-blacklist-red/60 bg-blacklist-red/10 px-4 py-3 text-sm text-blacklist-red">
                       {errorMessage}
                     </div>
                   )}
@@ -336,39 +448,39 @@ function MealGenerator() {
                     onClick={handleUpgrade}
                     disabled={isUpgrading}
                     aria-busy={isUpgrading}
-                    className="w-full py-4 bg-[#22c55e] text-black font-black uppercase tracking-widest rounded-lg disabled:opacity-30 shadow-xl transition-all active:scale-95"
+                    className="w-full py-4 bg-fork-green text-carbon font-black uppercase tracking-widest disabled:opacity-30 shadow-xl transition-all active:scale-95"
                   >
                     {isUpgrading ? "Redirecting to checkout..." : "Unlock Lifetime Access — $9"}
                   </button>
                 </div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Secure checkout via Stripe</p>
+                <p className="font-mono-data text-[10px] text-steel-dim uppercase tracking-widest">Secure checkout via Stripe</p>
               </div>
             ) : (
               <div className="space-y-6 no-print">
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-bold text-white uppercase">Clinical Parameters</h2>
-                  <p className="text-sm text-zinc-500">Input your biological data and food restrictions.</p>
+                  <h2 className="font-display text-2xl text-chalk uppercase">Clinical Parameters</h2>
+                  <p className="text-sm text-steel">Input your biological data and food restrictions.</p>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="relative">
                     <label htmlFor="weight" className="sr-only">Current weight in pounds</label>
-                    <input id="weight" type="number" inputMode="numeric" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Current Weight" aria-describedby="weight-unit" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
-                    <span id="weight-unit" className="absolute right-4 top-3.5 text-zinc-400 font-bold text-[10px]">LBS</span>
+                    <input id="weight" type="number" inputMode="numeric" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Current Weight" aria-describedby="weight-unit" className="w-full px-4 py-3 bg-carbon border border-carbon-line text-chalk font-mono-data outline-none focus:border-fork-green transition-colors" />
+                    <span id="weight-unit" className="absolute right-4 top-3.5 text-steel font-mono-data font-bold text-[10px]">LBS</span>
                   </div>
                   <div className="relative">
                     <label htmlFor="goal-weight" className="sr-only">Goal weight in pounds</label>
-                    <input id="goal-weight" type="number" inputMode="numeric" value={goalWeight} onChange={(e) => setGoalWeight(e.target.value)} placeholder="Goal Weight" aria-describedby="goal-unit" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
-                    <span id="goal-unit" className="absolute right-4 top-3.5 text-zinc-400 font-bold text-[10px]">GOAL</span>
+                    <input id="goal-weight" type="number" inputMode="numeric" value={goalWeight} onChange={(e) => setGoalWeight(e.target.value)} placeholder="Goal Weight" aria-describedby="goal-unit" className="w-full px-4 py-3 bg-carbon border border-carbon-line text-chalk font-mono-data outline-none focus:border-fork-green transition-colors" />
+                    <span id="goal-unit" className="absolute right-4 top-3.5 text-steel font-mono-data font-bold text-[10px]">GOAL</span>
                   </div>
                   <div className="relative">
                     <label htmlFor="body-fat" className="sr-only">Body fat percentage</label>
-                    <input id="body-fat" type="number" inputMode="decimal" value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} placeholder="Body Fat %" aria-describedby="fat-unit" className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none" />
-                    <span id="fat-unit" className="absolute right-4 top-3.5 text-zinc-400 font-bold text-[10px]">% FAT</span>
+                    <input id="body-fat" type="number" inputMode="decimal" value={bodyFat} onChange={(e) => setBodyFat(e.target.value)} placeholder="Body Fat %" aria-describedby="fat-unit" className="w-full px-4 py-3 bg-carbon border border-carbon-line text-chalk font-mono-data outline-none focus:border-fork-green transition-colors" />
+                    <span id="fat-unit" className="absolute right-4 top-3.5 text-steel font-mono-data font-bold text-[10px]">% FAT</span>
                   </div>
                   <div>
                     <label htmlFor="activity-level" className="sr-only">Activity level</label>
-                    <select id="activity-level" value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)} className="w-full px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none appearance-none cursor-pointer">
+                    <select id="activity-level" value={activityLevel} onChange={(e) => setActivityLevel(e.target.value)} className="w-full px-4 py-3 bg-carbon border border-carbon-line text-chalk outline-none appearance-none cursor-pointer focus:border-fork-green transition-colors">
                       <option value="1.2">Sedentary (Minimal Movement)</option>
                       <option value="1.375">Light (1-2 days/week)</option>
                       <option value="1.55">Moderate (3-5 days/week)</option>
@@ -379,23 +491,23 @@ function MealGenerator() {
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="blacklist" className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">The Blacklist</label>
+                  <label htmlFor="blacklist" className="block text-[10px] font-bold text-steel uppercase tracking-widest ml-1">The Blacklist</label>
                   <textarea 
                     id="blacklist"
                     value={fridgeInput} 
                     onChange={(e) => setFridgeInput(e.target.value)} 
                     placeholder="List foods you refuse to eat (e.g. No eggplant, no dairy, no cilantro)..." 
-                    className="w-full h-32 px-4 py-3 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[#ededed] outline-none resize-none focus:border-red-900/50 transition-colors" 
+                    className="w-full h-32 px-4 py-3 bg-carbon border border-carbon-line text-chalk outline-none resize-none focus:border-blacklist-red transition-colors" 
                   />
                 </div>
 
                 {errorMessage && (
-                  <div role="alert" className="rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+                  <div role="alert" className="border border-blacklist-red/60 bg-blacklist-red/10 px-4 py-3 text-sm text-blacklist-red">
                     {errorMessage}
                   </div>
                 )}
               
-                <button onClick={handleForkIt} disabled={isAnalyzing} aria-busy={isAnalyzing} className="w-full py-4 bg-[#22c55e] text-black font-black uppercase tracking-widest rounded-lg disabled:opacity-30 shadow-xl transition-all active:scale-95">
+                <button onClick={handleForkIt} disabled={isAnalyzing} aria-busy={isAnalyzing} className="w-full py-4 bg-fork-green text-carbon font-black uppercase tracking-widest disabled:opacity-30 shadow-xl transition-all active:scale-95">
                   {getButtonText()}
                 </button>
 
@@ -409,7 +521,7 @@ function MealGenerator() {
 
           {user && audits.length > 0 && !generatedPlan && (
             <div className="space-y-4 no-print animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400">Audit History</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-steel">Audit History</h3>
               <div className="grid grid-cols-1 gap-3">
                 {audits.map((audit) => (
                   <button 
@@ -423,15 +535,15 @@ function MealGenerator() {
                         setGeneratedPlan(audit.generated_plan);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    className="flex items-center justify-between p-5 bg-[#161616] border border-zinc-800 rounded-xl hover:border-[#22c55e]/50 transition-all group"
+                    className="flex items-center justify-between p-5 bg-carbon-raised border border-carbon-line hover:border-fork-green/50 transition-all group"
                   >
                     <div className="text-left">
-                      <p className="text-[10px] font-mono text-zinc-400 uppercase mb-1">{new Date(audit.created_at).toLocaleDateString()}</p>
-                      <p className="text-sm font-bold text-white">{audit.weight} LBS <span aria-hidden="true">→</span> <span className="text-[#22c55e]">{audit.goal_weight} LBS</span></p>
-                      <p className="text-[9px] text-zinc-500 uppercase mt-1 truncate max-w-[150px]">Excluded: {audit.ingredients}</p>
+                      <p className="text-[10px] font-mono-data text-steel uppercase mb-1">{new Date(audit.created_at).toLocaleDateString()}</p>
+                      <p className="text-sm font-bold text-chalk font-mono-data">{audit.weight} LBS <span aria-hidden="true">→</span> <span className="text-fork-green">{audit.goal_weight} LBS</span></p>
+                      <p className="text-[9px] text-steel-dim uppercase mt-1 truncate max-w-[150px]">Excluded: {audit.ingredients}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] font-black uppercase tracking-tighter text-zinc-400 group-hover:text-[#22c55e]">Open Report <span aria-hidden="true">→</span></span>
+                      <span className="text-[10px] font-black uppercase tracking-tighter text-steel group-hover:text-fork-green">Open Report <span aria-hidden="true">→</span></span>
                     </div>
                   </button>
                 ))}
@@ -441,8 +553,8 @@ function MealGenerator() {
         </div>
       </section>
       {/* FOOTER ADDED HERE INSIDE THE MAIN DIV */}
-      <footer className="py-10 text-center">
-        <a href="/privacy" className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400 hover:text-[#22c55e] transition-colors">
+      <footer className="py-10 text-center border-t border-carbon-line">
+        <a href="/privacy" className="font-mono-data text-[10px] uppercase tracking-[0.2em] font-bold text-steel hover:text-fork-green transition-colors">
           Privacy Policy
         </a>
       </footer>
@@ -452,7 +564,7 @@ function MealGenerator() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center text-white font-mono uppercase tracking-widest">Initialising Audit...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-carbon flex items-center justify-center text-chalk font-mono-data uppercase tracking-widest">Initialising Audit...</div>}>
       <MealGenerator />
     </Suspense>
   );
