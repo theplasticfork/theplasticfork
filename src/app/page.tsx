@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient"; 
+import CoachForker from "./CoachForker";
 
 function MealGenerator() {
   const [user, setUser] = useState<any>(null);
@@ -662,6 +663,12 @@ function MealGenerator() {
               </div>
             )}
           </div>
+
+          {user && !generatedPlan && (
+            <div className="no-print">
+              <CoachForker isPro={!!profile?.is_pro} onUpgrade={handleUpgrade} />
+            </div>
+          )}
 
           {user && audits.length > 0 && !generatedPlan && (
             <div className="space-y-4 no-print animate-in fade-in slide-in-from-bottom-4 duration-700">
