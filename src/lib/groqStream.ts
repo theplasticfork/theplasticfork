@@ -5,12 +5,28 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 export const GROQ_MODEL = "openai/gpt-oss-120b";
 const TIMEOUT_MS = 30000;
 
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
 /**
  * Sends a single-prompt chat request to Groq and returns a plain-text
- * ReadableStream of the model's output. Retries once on a failed/timed-out
- * connection. Throws if Groq returns a non-OK response after the retry.
+ * ReadableStream of the model's output.
  */
-export async function streamGroq(prompt: string): Promise<ReadableStream<Uint8Array>> {
+export function streamGroq(prompt: string): Promise<ReadableStream<Uint8Array>> {
+  return streamGroqMessages([{ role: "user", content: prompt }]);
+}
+
+/**
+ * Multi-turn variant: send a full messages array (system + conversation
+ * history). Returns a plain-text ReadableStream of the model's reply.
+ * Retries once on a failed/timed-out connection. Throws if Groq returns a
+ * non-OK response after the retry.
+ */
+export async function streamGroqMessages(
+  messages: ChatMessage[]
+): Promise<ReadableStream<Uint8Array>> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("API key not configured");
@@ -31,7 +47,7 @@ export async function streamGroq(prompt: string): Promise<ReadableStream<Uint8Ar
           stream: true,
           // Reasoning model; "low" skips streaming its internal thinking.
           reasoning_effort: "low",
-          messages: [{ role: "user", content: prompt }],
+          messages,
         }),
         signal: controller.signal,
       });
