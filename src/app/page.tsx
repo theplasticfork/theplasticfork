@@ -21,6 +21,10 @@ function MealGenerator() {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Mode toggle: build a meal plan, or roast what you actually ate.
+  const [mode, setMode] = useState<"plan" | "roast">("plan");
+  const [foodLog, setFoodLog] = useState("");
+
   // How many free audits a signed-in user gets before the paywall.
   const FREE_AUDIT_LIMIT = 2;
 
@@ -236,6 +240,90 @@ function MealGenerator() {
       setIsAnalyzing(false);
     }
   }
+
+  // Roast My Day: audit what the user actually ate. Shares the same free/guest/
+  // Pro gating as plan generation so it can't be used to bypass the paywall.
+  const handleRoast = async () => {
+    setErrorMessage(null);
+
+    if (!foodLog.trim()) {
+      setErrorMessage("Tell me what you ate first. Don't be shy.");
+      return;
+    }
+
+    // Guest limit
+    if (!user) {
+      if (localStorage.getItem("plastic-fork-usage-count") === "1") {
+        setErrorMessage("GUEST LIMIT REACHED. Sign in to continue.");
+        handleLogin();
+        return;
+      }
+    }
+
+    // Signed-in free users who've used their allowance hit the paywall.
+    if (needsUpgrade) {
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch("/api/roast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ foodLog, isPro: !!profile?.is_pro }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setErrorMessage(data.error || "Roast failed. Try again.");
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let full = "";
+
+      if (reader) {
+        setGeneratedPlan("");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          full += decoder.decode(value, { stream: true });
+          setGeneratedPlan(full);
+        }
+      } else {
+        full = await response.text();
+        setGeneratedPlan(full);
+      }
+
+      if (!full.trim()) {
+        setErrorMessage("Roast failed. Try again.");
+        setGeneratedPlan(null);
+        return;
+      }
+
+      // Persist the roast to history (reusing the audits table).
+      if (user) {
+        await supabase.from("audits").insert([{
+          user_id: user.id,
+          user_email: user.email,
+          weight: weight || "0",
+          goal_weight: goalWeight || "0",
+          body_fat: bodyFat || "0",
+          activity_level: activityLevel,
+          ingredients: `ROAST: ${foodLog.slice(0, 60)}`,
+          generated_plan: full,
+        }]);
+        fetchData(user.id);
+      } else {
+        localStorage.setItem("plastic-fork-usage-count", "1");
+      }
+    } catch {
+      setErrorMessage("Roast failed. Check your connection and try again.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   // Copy the current plan to the clipboard (stripped of markdown noise).
   const handleCopyPlan = async () => {
@@ -457,6 +545,60 @@ function MealGenerator() {
               </div>
             ) : (
               <div className="space-y-6 no-print">
+                {/* Mode toggle: Build a plan vs Roast my day */}
+                <div className="grid grid-cols-2 gap-0 border border-carbon-line" role="tablist" aria-label="Choose mode">
+                  <button
+                    role="tab"
+                    aria-selected={mode === "plan"}
+                    onClick={() => { setMode("plan"); setErrorMessage(null); }}
+                    className={`py-3 text-xs font-black uppercase tracking-widest transition-colors ${mode === "plan" ? "bg-fork-green text-carbon" : "bg-transparent text-steel hover:text-chalk"}`}
+                  >
+                    Build My Plan
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={mode === "roast"}
+                    onClick={() => { setMode("roast"); setErrorMessage(null); }}
+                    className={`py-3 text-xs font-black uppercase tracking-widest transition-colors ${mode === "roast" ? "bg-fork-green text-carbon" : "bg-transparent text-steel hover:text-chalk"}`}
+                  >
+                    Roast My Day
+                  </button>
+                </div>
+
+                {mode === "roast" ? (
+                  <>
+                    <div className="space-y-2">
+                      <h2 className="font-display text-2xl text-chalk uppercase">Roast My Day</h2>
+                      <p className="text-sm text-steel">Confess what you actually ate. The Fork will audit the damage.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="food-log" className="block text-[10px] font-bold text-steel uppercase tracking-widest ml-1">Today&apos;s Intake</label>
+                      <textarea
+                        id="food-log"
+                        value={foodLog}
+                        onChange={(e) => setFoodLog(e.target.value)}
+                        placeholder="e.g. Breakfast: 3 donuts and a large latte. Lunch: skipped. Dinner: whole pizza and a few beers..."
+                        className="w-full h-40 px-4 py-3 bg-carbon border border-carbon-line text-chalk outline-none resize-none focus:border-fork-green transition-colors"
+                      />
+                    </div>
+
+                    {errorMessage && (
+                      <div role="alert" className="border border-blacklist-red/60 bg-blacklist-red/10 px-4 py-3 text-sm text-blacklist-red">
+                        {errorMessage}
+                      </div>
+                    )}
+
+                    <button onClick={handleRoast} disabled={isAnalyzing} aria-busy={isAnalyzing} className="w-full py-4 bg-fork-green text-carbon font-black uppercase tracking-widest disabled:opacity-30 shadow-xl transition-all active:scale-95">
+                      {isAnalyzing ? "Roasting..." : "Roast it!"}
+                    </button>
+
+                    <p aria-live="polite" className="sr-only">
+                      {isAnalyzing ? "Roasting your day, please wait." : ""}
+                    </p>
+                  </>
+                ) : (
+                <>
                 <div className="space-y-2">
                   <h2 className="font-display text-2xl text-chalk uppercase">Clinical Parameters</h2>
                   <p className="text-sm text-steel">Input your biological data and food restrictions.</p>
@@ -515,6 +657,8 @@ function MealGenerator() {
                 <p aria-live="polite" className="sr-only">
                   {isAnalyzing ? "Generating your audit report, please wait." : ""}
                 </p>
+                </>
+                )}
               </div>
             )}
           </div>
