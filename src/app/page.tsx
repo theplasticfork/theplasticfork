@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient"; 
 import CoachForker from "./CoachForker";
+import TheGadget from "./TheGadget";
 
 function MealGenerator() {
   const [user, setUser] = useState<any>(null);
@@ -570,6 +571,9 @@ function MealGenerator() {
                   Roast My Day
                 </button>
               </div>
+
+              {/* The Gadget: visual stats for everyone */}
+              <TheGadget audits={audits} />
             </div>
           )}
 
