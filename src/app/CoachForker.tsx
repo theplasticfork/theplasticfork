@@ -121,6 +121,15 @@ export default function CoachForker({ isPro, onUpgrade }: { isPro: boolean; onUp
         <span className="font-display text-sm uppercase tracking-wide text-chalk">Coach Forker</span>
         <span className="w-2 h-2 rounded-full bg-fork-green" aria-hidden="true" />
         <span className="font-mono-data text-[10px] text-steel uppercase tracking-widest">On the clock</span>
+        {messages.length > 0 && (
+          <button
+            onClick={() => { setMessages([]); setInput(""); setError(null); }}
+            disabled={isThinking}
+            className="ml-auto font-mono-data text-[10px] text-steel hover:text-chalk uppercase tracking-widest disabled:opacity-40 transition-colors"
+          >
+            New Chat
+          </button>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
