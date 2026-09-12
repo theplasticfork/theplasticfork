@@ -149,9 +149,9 @@ function MealGenerator() {
         return;
     }
 
-    // --- LOGIC GATE 1: GUEST USER ---
+    // --- LOGIC GATE 1: GUEST USER (1 free plan, separate from roast) ---
     if (!user) {
-      if (localStorage.getItem("plastic-fork-usage-count") === "1") {
+      if (localStorage.getItem("plastic-fork-plan-used") === "1") {
         setErrorMessage("GUEST LIMIT REACHED. Sign in to continue your audits.");
         handleLogin();
         return;
@@ -228,7 +228,7 @@ function MealGenerator() {
         fetchData(user.id); 
       } else {
         // Save guest data for later sync
-        localStorage.setItem("plastic-fork-usage-count", "1");
+        localStorage.setItem("plastic-fork-plan-used", "1");
         localStorage.setItem("last-guest-plan-content", fullPlan);
         localStorage.setItem("last-guest-plan-meta", JSON.stringify({
           weight, goalWeight, bodyFat: bodyFat || "20", activityLevel, ingredients: fridgeInput || "None"
@@ -251,9 +251,9 @@ function MealGenerator() {
       return;
     }
 
-    // Guest limit
+    // Guest limit (1 free roast, separate from the free plan)
     if (!user) {
-      if (localStorage.getItem("plastic-fork-usage-count") === "1") {
+      if (localStorage.getItem("plastic-fork-roast-used") === "1") {
         setErrorMessage("GUEST LIMIT REACHED. Sign in to continue.");
         handleLogin();
         return;
@@ -316,7 +316,7 @@ function MealGenerator() {
         }]);
         fetchData(user.id);
       } else {
-        localStorage.setItem("plastic-fork-usage-count", "1");
+        localStorage.setItem("plastic-fork-roast-used", "1");
       }
     } catch {
       setErrorMessage("Roast failed. Check your connection and try again.");
@@ -442,7 +442,7 @@ function MealGenerator() {
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="font-display text-lg tracking-tight text-chalk uppercase">The Plastic <span className="text-fork-green">Fork</span></span>
-            {profile?.is_pro && <span className="font-mono-data text-[10px] bg-fork-green text-carbon px-2 py-0.5 font-bold">PRO</span>}
+            {profile?.is_pro && <span className="font-mono-data text-[10px] bg-fork-green text-carbon px-2 py-0.5 font-bold uppercase tracking-wider">Badass Forker</span>}
           </div>
           <div>
             {user ? (
