@@ -26,6 +26,34 @@ function MealGenerator() {
   const [mode, setMode] = useState<"plan" | "roast">("plan");
   const [foodLog, setFoodLog] = useState("");
 
+  // The Suite: signed-in users land on their dashboard; the generator is
+  // tucked behind a button and revealed on demand.
+  const [showGenerator, setShowGenerator] = useState(false);
+
+  // Roasts are stored in the audits table with an ingredients prefix.
+  const isRoast = (a: any) => typeof a?.ingredients === "string" && a.ingredients.startsWith("ROAST:");
+
+  // Derived dashboard stats from the user's saved audits.
+  const planAudits = audits.filter((a) => !isRoast(a));
+  const stats = {
+    total: audits.length,
+    plans: planAudits.length,
+    roasts: audits.length - planAudits.length,
+    current: planAudits[0]?.weight ?? null,
+    goal: planAudits[0]?.goal_weight ?? null,
+    lastDate: audits[0]?.created_at
+      ? new Date(audits[0].created_at).toLocaleDateString()
+      : null,
+  };
+
+  // Open the generator in a given mode (used by dashboard entry buttons).
+  const openGenerator = (m: "plan" | "roast") => {
+    setMode(m);
+    setErrorMessage(null);
+    setGeneratedPlan(null);
+    setShowGenerator(true);
+  };
+
   // How many free audits a signed-in user gets before the paywall.
   const FREE_AUDIT_LIMIT = 2;
 
@@ -458,28 +486,96 @@ function MealGenerator() {
         </div>
       </nav>
 
-      <section className="relative flex items-center justify-center px-4 py-20 text-center no-print border-b border-carbon-line">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <span className="font-mono-data text-xs uppercase tracking-[0.2em] text-fork-green">Precision, not positivity</span>
-          <h1 className="font-display text-5xl sm:text-7xl leading-[0.95] tracking-tight uppercase">
-            You can&apos;t out-train<br />a <span className="text-fork-green">bad fork.</span>
-          </h1>
-          <p className="text-lg text-steel max-w-2xl mx-auto">Precision auditing. Blacklist the fluff. Get results. Keeping you in a deficit.</p>
-        </div>
-      </section>
+      {/* Guest funnel: hero + explainer only for logged-out visitors */}
+      {!user && (
+        <>
+          <section className="relative flex items-center justify-center px-4 py-20 text-center no-print border-b border-carbon-line">
+            <div className="max-w-4xl mx-auto space-y-6">
+              <span className="font-mono-data text-xs uppercase tracking-[0.2em] text-fork-green">Precision, not positivity</span>
+              <h1 className="font-display text-5xl sm:text-7xl leading-[0.95] tracking-tight uppercase">
+                You can&apos;t out-train<br />a <span className="text-fork-green">bad fork.</span>
+              </h1>
+              <p className="text-lg text-steel max-w-2xl mx-auto">Precision auditing. Blacklist the fluff. Get results. Keeping you in a deficit.</p>
+            </div>
+          </section>
 
-      <section className="max-w-2xl mx-auto px-6 py-16 text-center border-b border-carbon-line no-print">
-        <h2 className="font-display text-2xl uppercase mb-4">What the fork we do</h2>
-        <p className="text-steel leading-relaxed">
-          The Plastic Fork is an intelligent meal management tool designed to help you organize your culinary life.
-          By signing in with Google, we securely sync your preferences and saved meal plans across devices.
-          We prioritize your privacy and only use your basic profile information to provide a personalized,
-          seamless experience.
-        </p>
-      </section>
+          <section className="max-w-2xl mx-auto px-6 py-16 text-center border-b border-carbon-line no-print">
+            <h2 className="font-display text-2xl uppercase mb-4">What the fork we do</h2>
+            <p className="text-steel leading-relaxed">
+              The Plastic Fork is an intelligent meal management tool designed to help you organize your culinary life.
+              By signing in with Google, we securely sync your preferences and saved meal plans across devices.
+              We prioritize your privacy and only use your basic profile information to provide a personalized,
+              seamless experience.
+            </p>
+          </section>
+        </>
+      )}
 
       <section id="main-content" className="relative py-12 px-4">
         <div className="max-w-2xl mx-auto space-y-12">
+
+          {/* THE SUITE: signed-in dashboard header + stats (hidden while
+              viewing a report or the generator) */}
+          {user && !generatedPlan && !showGenerator && (
+            <div className="space-y-8 no-print">
+              <div className="space-y-1">
+                <span className="font-mono-data text-[10px] uppercase tracking-[0.2em] text-fork-green">Your Suite</span>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h1 className="font-display text-3xl text-chalk uppercase">
+                    {user.email?.split("@")[0] || "Forker"}
+                  </h1>
+                  {profile?.is_pro && <span className="font-mono-data text-[10px] bg-fork-green text-carbon px-2 py-0.5 font-bold uppercase tracking-wider">Badass Forker</span>}
+                </div>
+                {stats.current && stats.goal ? (
+                  <p className="font-mono-data text-sm text-steel">
+                    {stats.current} LBS <span aria-hidden="true">→</span> <span className="text-fork-green">{stats.goal} LBS</span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-steel">No audits yet. Time to get to work.</p>
+                )}
+              </div>
+
+              {/* Stats row */}
+              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-carbon-line border border-carbon-line">
+                <div className="bg-carbon-raised p-4">
+                  <dt className="font-mono-data text-[10px] uppercase tracking-widest text-steel-dim">Current</dt>
+                  <dd className="font-mono-data text-2xl text-chalk mt-1">{stats.current ?? "—"}</dd>
+                </div>
+                <div className="bg-carbon-raised p-4">
+                  <dt className="font-mono-data text-[10px] uppercase tracking-widest text-steel-dim">Goal</dt>
+                  <dd className="font-mono-data text-2xl text-fork-green mt-1">{stats.goal ?? "—"}</dd>
+                </div>
+                <div className="bg-carbon-raised p-4">
+                  <dt className="font-mono-data text-[10px] uppercase tracking-widest text-steel-dim">Total Audits</dt>
+                  <dd className="font-mono-data text-2xl text-pr-gold mt-1">{stats.total}</dd>
+                </div>
+                <div className="bg-carbon-raised p-4">
+                  <dt className="font-mono-data text-[10px] uppercase tracking-widest text-steel-dim">Last</dt>
+                  <dd className="font-mono-data text-sm text-chalk mt-2">{stats.lastDate ?? "—"}</dd>
+                </div>
+              </dl>
+
+              {/* Entry buttons: the generator lives behind these */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => openGenerator("plan")}
+                  className="py-4 bg-fork-green text-carbon font-black uppercase tracking-widest transition-all active:scale-95"
+                >
+                  New Audit
+                </button>
+                <button
+                  onClick={() => openGenerator("roast")}
+                  className="py-4 border border-carbon-line text-chalk font-black uppercase tracking-widest hover:border-fork-green/60 transition-all active:scale-95"
+                >
+                  Roast My Day
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Generator card: shown for guests always, and for signed-in users
+              only when they open it or are viewing a report */}
+          {(!user || showGenerator || generatedPlan) && (
           <div className="bg-carbon-raised p-8 border border-carbon-line shadow-2xl">
             {generatedPlan ? (
               <div className="space-y-6">
@@ -497,7 +593,7 @@ function MealGenerator() {
                   </div>
 
                   <div className="mt-8 flex flex-wrap items-center gap-4 no-print">
-                    <button onClick={() => { setGeneratedPlan(null); setErrorMessage(null); }} className="text-sm text-steel hover:text-chalk transition-colors"><span aria-hidden="true">←</span> Start New Audit</button>
+                    <button onClick={() => { setGeneratedPlan(null); setErrorMessage(null); setShowGenerator(false); }} className="text-sm text-steel hover:text-chalk transition-colors"><span aria-hidden="true">←</span> {user ? "Back to your suite" : "Start New Audit"}</button>
                     <div className="flex gap-3 ml-auto">
                       <button onClick={handleCopyPlan} className="text-xs font-bold uppercase tracking-widest border border-carbon-line text-steel hover:text-chalk hover:border-steel px-4 py-2 transition-colors">
                         {copied ? "Copied ✓" : "Copy"}
@@ -546,6 +642,14 @@ function MealGenerator() {
               </div>
             ) : (
               <div className="space-y-6 no-print">
+                {user && (
+                  <button
+                    onClick={() => { setShowGenerator(false); setErrorMessage(null); }}
+                    className="text-sm text-steel hover:text-chalk transition-colors"
+                  >
+                    <span aria-hidden="true">←</span> Back to your suite
+                  </button>
+                )}
                 {/* Mode toggle: Build a plan vs Roast my day */}
                 <div className="grid grid-cols-2 gap-0 border border-carbon-line" role="tablist" aria-label="Choose mode">
                   <button
@@ -663,14 +767,15 @@ function MealGenerator() {
               </div>
             )}
           </div>
+          )}
 
-          {user && !generatedPlan && (
+          {user && !generatedPlan && !showGenerator && (
             <div className="no-print">
               <CoachForker isPro={!!profile?.is_pro} onUpgrade={handleUpgrade} />
             </div>
           )}
 
-          {user && audits.length > 0 && !generatedPlan && (
+          {user && audits.length > 0 && !generatedPlan && !showGenerator && (
             <div className="space-y-4 no-print animate-in fade-in slide-in-from-bottom-4 duration-700">
               <h3 className="text-xs font-bold uppercase tracking-widest text-steel">Audit History</h3>
               <div className="grid grid-cols-1 gap-3">
@@ -689,12 +794,21 @@ function MealGenerator() {
                     className="flex items-center justify-between p-5 bg-carbon-raised border border-carbon-line hover:border-fork-green/50 transition-all group"
                   >
                     <div className="text-left">
-                      <p className="text-[10px] font-mono-data text-steel uppercase mb-1">{new Date(audit.created_at).toLocaleDateString()}</p>
-                      <p className="text-sm font-bold text-chalk font-mono-data">{audit.weight} LBS <span aria-hidden="true">→</span> <span className="text-fork-green">{audit.goal_weight} LBS</span></p>
-                      <p className="text-[9px] text-steel-dim uppercase mt-1 truncate max-w-[150px]">Excluded: {audit.ingredients}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-[10px] font-mono-data text-steel uppercase">{new Date(audit.created_at).toLocaleDateString()}</p>
+                        <span className={`font-mono-data text-[9px] px-1.5 py-0.5 uppercase tracking-wider font-bold ${isRoast(audit) ? "bg-blacklist-red/20 text-blacklist-red" : "bg-fork-green/20 text-fork-green"}`}>
+                          {isRoast(audit) ? "Roast" : "Plan"}
+                        </span>
+                      </div>
+                      {isRoast(audit) ? (
+                        <p className="text-sm font-bold text-chalk">Roast My Day</p>
+                      ) : (
+                        <p className="text-sm font-bold text-chalk font-mono-data">{audit.weight} LBS <span aria-hidden="true">→</span> <span className="text-fork-green">{audit.goal_weight} LBS</span></p>
+                      )}
+                      <p className="text-[9px] text-steel-dim uppercase mt-1 truncate max-w-[150px]">{isRoast(audit) ? audit.ingredients.replace("ROAST: ", "Logged: ") : `Excluded: ${audit.ingredients}`}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] font-black uppercase tracking-tighter text-steel group-hover:text-fork-green">Open Report <span aria-hidden="true">→</span></span>
+                      <span className="text-[10px] font-black uppercase tracking-tighter text-steel group-hover:text-fork-green">Open <span aria-hidden="true">→</span></span>
                     </div>
                   </button>
                 ))}
