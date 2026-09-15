@@ -5,11 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient"; 
 import CoachForker from "./CoachForker";
 import TheGadget from "./TheGadget";
+import DailyWeighIn from "./DailyWeighIn";
 
 function MealGenerator() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null); 
   const [audits, setAudits] = useState<any[]>([]);
+  const [weighIns, setWeighIns] = useState<any[]>([]);
   
   const [fridgeInput, setFridgeInput] = useState("");
   const [weight, setWeight] = useState(""); 
@@ -78,6 +80,15 @@ function MealGenerator() {
       .single();
     
     setProfile(profileData);
+
+    // Daily weigh-ins. Fails gracefully if the table isn't created yet.
+    const { data: weighInData } = await supabase
+      .from('weigh_ins')
+      .select('*')
+      .eq('user_id', userId)
+      .order('logged_on', { ascending: false });
+
+    setWeighIns(weighInData || []);
   };
 
   // Helper to sync the guest plan to the database once signed in
@@ -556,6 +567,9 @@ function MealGenerator() {
                 </div>
               </dl>
 
+              {/* Daily weigh-in: the habit hook */}
+              <DailyWeighIn userId={user.id} weighIns={weighIns} onSaved={() => fetchData(user.id)} />
+
               {/* Entry buttons: the generator lives behind these */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
@@ -573,7 +587,7 @@ function MealGenerator() {
               </div>
 
               {/* The Gadget: visual stats for everyone */}
-              <TheGadget audits={audits} />
+              <TheGadget audits={audits} weighIns={weighIns} />
             </div>
           )}
 
