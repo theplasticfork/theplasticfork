@@ -9,45 +9,68 @@ type Audit = {
   ingredients?: string;
 };
 
+type WeighIn = { weight: number | string; logged_on: string };
+
 const isRoast = (a: Audit) =>
   typeof a.ingredients === "string" && a.ingredients.startsWith("ROAST:");
 
-// ---------- metric helpers (Task 1) ----------
+// ---------- metric helpers ----------
 
-// Chronological weight series from plan audits (oldest -> newest).
-function weightSeries(audits: Audit[]) {
-  return audits
+// Chronological weight series. Daily weigh-ins are the primary signal; plan
+// audits fill in any days without a weigh-in. One point per day, newest wins.
+function weightSeries(audits: Audit[], weighIns: WeighIn[]) {
+  const byDay = new Map<string, { date: Date; weight: number; goal: number }>();
+
+  // Plan audits first (lower priority).
+  audits
     .filter((a) => !isRoast(a) && Number(a.weight) > 0)
-    .map((a) => ({
-      date: new Date(a.created_at),
-      weight: Number(a.weight),
-      goal: Number(a.goal_weight),
-    }))
+    .forEach((a) => {
+      const d = new Date(a.created_at);
+      const key = d.toISOString().slice(0, 10);
+      byDay.set(key, { date: d, weight: Number(a.weight), goal: Number(a.goal_weight) });
+    });
+
+  // Weigh-ins override the audit weight for that day (they're the daily truth).
+  weighIns
+    .filter((w) => Number(w.weight) > 0)
+    .forEach((w) => {
+      const key = w.logged_on;
+      const existing = byDay.get(key);
+      byDay.set(key, {
+        date: new Date(key + "T12:00:00"),
+        weight: Number(w.weight),
+        goal: existing?.goal ?? 0,
+      });
+    });
+
+  return Array.from(byDay.values())
     .sort((x, y) => x.date.getTime() - y.date.getTime())
     .map((p) => ({
       label: p.date.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
       weight: p.weight,
-      goal: p.goal,
+      goal: p.goal || null,
     }));
 }
 
 // Goal progress: how far from start->goal the user has moved (0-100).
+// Uses the most recent known goal (weigh-in-only days carry no goal).
 function goalProgress(series: ReturnType<typeof weightSeries>) {
   if (series.length < 1) return null;
   const start = series[0].weight;
   const current = series[series.length - 1].weight;
-  const goal = series[series.length - 1].goal;
+  const goal = [...series].reverse().find((p) => p.goal && p.goal > 0)?.goal;
   if (!goal || start === goal) return null;
   const pct = ((start - current) / (start - goal)) * 100;
   return Math.max(0, Math.min(100, Math.round(pct)));
 }
 
-// Current streak: consecutive distinct days (up to today/yesterday) with audits.
-function currentStreak(audits: Audit[]) {
-  if (audits.length === 0) return 0;
-  const days = new Set(
-    audits.map((a) => new Date(a.created_at).toDateString())
-  );
+// Current streak: consecutive distinct days (up to today/yesterday) with any
+// activity — a weigh-in or an audit.
+function currentStreak(audits: Audit[], weighIns: WeighIn[]) {
+  const days = new Set<string>();
+  audits.forEach((a) => days.add(new Date(a.created_at).toDateString()));
+  weighIns.forEach((w) => days.add(new Date(w.logged_on + "T12:00:00").toDateString()));
+  if (days.size === 0) return 0;
   let streak = 0;
   const cursor = new Date();
   // Allow the streak to count if the most recent activity was today or yesterday.
@@ -123,13 +146,13 @@ function computeBadges(audits: Audit[], streak: number, progress: number | null)
 
 // ---------- Main component ----------
 
-export default function TheGadget({ audits }: { audits: Audit[] }) {
-  const series = weightSeries(audits);
+export default function TheGadget({ audits, weighIns = [] }: { audits: Audit[]; weighIns?: WeighIn[] }) {
+  const series = weightSeries(audits, weighIns);
   const progress = goalProgress(series);
-  const streak = currentStreak(audits);
+  const streak = currentStreak(audits, weighIns);
   const badges = computeBadges(audits, streak, progress);
 
-  const hasData = audits.length > 0;
+  const hasData = audits.length > 0 || weighIns.length > 0;
 
   return (
     <section aria-label="Your stats" className="space-y-4 no-print">
