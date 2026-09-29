@@ -1,0 +1,28 @@
+name: Keep Supabase Awake
+
+# Pings the app's keep-alive endpoint on a schedule so the Supabase free-tier
+# project keeps seeing activity and doesn't auto-pause after 7 idle days.
+# GitHub Actions cron is more reliable than Vercel Hobby cron, so this is the
+# primary keep-alive; the Vercel cron in vercel.json stays as a backup.
+
+on:
+  schedule:
+    # Twice a day (00:00 and 12:00 UTC) for margin. Cron on GitHub can be
+    # delayed under load, so two runs a day keeps us comfortably active.
+    - cron: "0 0,12 * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit keep-alive endpoint
+        run: |
+          echo "Pinging keep-alive..."
+          code=$(curl -sSL -o /tmp/out.txt -w "%{http_code}" https://www.theplasticfork.com/api/keep-alive)
+          echo "HTTP $code"
+          cat /tmp/out.txt
+          if [ "$code" != "200" ]; then
+            echo "Keep-alive did not return 200"
+            exit 1
+          fi
