@@ -48,7 +48,12 @@ export default function DailyWeighIn({
         );
 
       if (dbError) {
-        setError("Couldn't save. Try again.");
+        console.error("Weigh-in save failed:", dbError.message, dbError);
+        setError(
+          /relation .* does not exist|could not find the table/i.test(dbError.message)
+            ? "Weigh-in isn't set up yet. (Table missing.)"
+            : "Couldn't save. Try again."
+        );
         return;
       }
       setStatus(loggedToday ? "Updated." : "Logged. See you tomorrow.");
